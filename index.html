@@ -139,6 +139,8 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:8px;borde
 /* ===== PENGATURAN ===== */
 const API_URL='https://script.google.com/macros/s/AKfycbw3UL6T38vhU43wMuAeZrau7Irb0Jsr1z-m0Dw62vQsF50rmqB4g_ZhsqUonTaNNjfA/exec';
 const MODEL_URL='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/';
+/* 'ADA_WAJAH' = cukup ada wajah di kamera (+ NIP & PIN benar). 'KETAT' = wajah harus cocok + kedip mata. Harus sama dengan MODE_WAJAH di Code.gs */
+const MODE_WAJAH='ADA_WAJAH';
 const RESET_MS=7000, NET_MS=30000;
 const SHIFTS=[['Pagi',7,15],['Siang',15,23],['Malam',23,7]];
 
@@ -169,7 +171,16 @@ function show(id){['v-pin','v-face','v-res'].forEach(v=>$(v).classList.toggle('o
 function beep(ok){try{const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);
  o.frequency.value=ok?880:220;g.gain.setValueAtTime(.2,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+(ok?.35:.6));o.start();o.stop(a.currentTime+.65)}catch(e){}}
 
-async function loadModels(){if(modelsOK)return;const n=faceapi.nets;await Promise.all([n.tinyFaceDetector.loadFromUri(MODEL_URL),n.faceLandmark68Net.loadFromUri(MODEL_URL),n.faceRecognitionNet.loadFromUri(MODEL_URL)]);modelsOK=true}
+let detOK=false,fullOK=false;
+async function loadModels(full){const n=faceapi.nets;
+ try{await faceapi.tf.setBackend('webgl');await faceapi.tf.ready()}catch(e){try{await faceapi.tf.setBackend('cpu')}catch(_){}}
+ if(!detOK){await n.tinyFaceDetector.loadFromUri(MODEL_URL);detOK=true}
+ if((full||MODE_WAJAH!=='ADA_WAJAH')&&!fullOK){await Promise.all([n.faceLandmark68Net.loadFromUri(MODEL_URL),n.faceRecognitionNet.loadFromUri(MODEL_URL)]);fullOK=true}}
+async function presence(v,say,timeout=45000){const t0=Date.now(),opt=new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:.25});let n=0,hit=0;
+ while(Date.now()-t0<timeout){const r=await faceapi.detectSingleFace(v,opt);n++;
+  if(r){if(++hit>=2)return true;say('Wajah terdeteksi…')}else{hit=0;say('Mencari wajah… hadap lurus ke kamera ('+n+')')}
+  await sleep(150)}
+ throw new Error('Waktu habis. Wajah tidak terdeteksi.')}
 async function cam(v){stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});v.srcObject=stream;await v.play()}
 function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
 const dd=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),ear=p=>(dd(p[1],p[5])+dd(p[2],p[4]))/(2*dd(p[0],p[3]));
@@ -190,8 +201,11 @@ $('next').onclick=async()=>{
  if(!apiOn()){result(false,'Belum tersambung','Isi API_URL di index.html dengan URL Web App.');busy=false;return}
  show('v-face');$('fmsg').textContent='Memuat model wajah…';
  try{await loadModels();await cam($('vid'));
-  const s=await scan($('vid'),t=>$('fmsg').textContent=t);stopCam();$('fmsg').textContent='Memverifikasi…';
-  const r=await api('verify',{nip:$('nip').value.trim(),pin,desc:s.desc[0],live:s.live});
+  const say=t=>$('fmsg').textContent=t;let extra;
+  if(MODE_WAJAH==='ADA_WAJAH'){await presence($('vid'),say);extra={presence:true}}
+  else{const s=await scan($('vid'),say);extra={desc:s.desc[0],live:s.live}}
+  stopCam();$('fmsg').textContent='Memverifikasi…';
+  const r=await api('verify',{nip:$('nip').value.trim(),pin,...extra});
   if(r.ok){const m=r.aksi==='MASUK'?`MASUK ${r.jam} · ${r.status}`:`KELUAR ${r.jam} · Durasi ${Math.floor(r.durasi/60)} j ${r.durasi%60} m`;result(true,r.nama,r.jabatan||'',m)}
   else result(false,'AKSES DITOLAK',r.pesan||'Verifikasi gagal')
  }catch(e){stopCam();result(false,'AKSES DITOLAK',e.message||'Terjadi kesalahan')}
@@ -226,7 +240,7 @@ $('ulist').onclick=async e=>{const b=e.target.closest('button');if(!b)return;
  const r=await api('admin_set',{adminPin,nip:b.dataset.n,status:b.dataset.s});if(!r.ok)return alert(r.pesan);renderAdmin(await api('admin_list',{adminPin}))};
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('act',x===b));$('t-u').classList.toggle('hid',b.dataset.t!=='u');$('t-n').classList.toggle('hid',b.dataset.t!=='n')});
 $('e-cam').onclick=async()=>{faces=[];$('e-save').disabled=true;$('emsg').textContent='Memuat model wajah…';
- try{await loadModels();await cam($('evid'));const s=await scan($('evid'),t=>$('emsg').textContent=t,{blink:false,samples:3,timeout:40000});faces=s.desc;$('emsg').textContent='3 sampel wajah siap. Klik Simpan.';$('e-save').disabled=false}
+ try{await loadModels(true);await cam($('evid'));const s=await scan($('evid'),t=>$('emsg').textContent=t,{blink:false,samples:3,timeout:40000});faces=s.desc;$('emsg').textContent='3 sampel wajah siap. Klik Simpan.';$('e-save').disabled=false}
  catch(e){$('emsg').textContent=e.message}stopCam()};
 $('e-save').onclick=async()=>{const r=await api('enroll',{adminPin,nip:$('e-nip').value,nama:$('e-nama').value,jabatan:$('e-jab').value,shift:$('e-shift').value,pin:$('e-pin').value,faces});
  alert(r.pesan);if(r.ok){['e-nip','e-nama','e-jab','e-pin'].forEach(i=>$(i).value='');faces=[];$('e-save').disabled=true;$('emsg').textContent='';renderAdmin(await api('admin_list',{adminPin}))}};
