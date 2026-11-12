@@ -64,6 +64,7 @@ label.l{display:block;text-align:left;color:var(--dim);font-size:13px;margin:0 0
 .res p{color:var(--dim);margin:8px 0}.res .meta{display:inline-block;margin-top:10px;padding:8px 16px;border-radius:99px;border:1px solid var(--line);font-size:16px}
 .bar{height:4px;border-radius:4px;background:var(--line);margin-top:22px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac);animation:cd 7s linear forwards}
 @keyframes cd{from{width:100%}to{width:0}}
+#openAdm{border-color:var(--ac);color:var(--ac);background:#4a1738;opacity:1}
 footer{position:relative;z-index:5;display:flex;justify-content:space-between;align-items:center;color:var(--dim);font-size:12px;gap:12px}
 #adm{position:fixed;inset:0;background:rgba(15,4,14,.88);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:16px;z-index:20}#adm.on{display:flex}
 #adm .box{width:min(760px,100%);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--or);border-radius:18px;padding:20px}
@@ -207,7 +208,12 @@ async function checkNet(){
  catch(e){$('net').className='dot off';$('netx').textContent='Koneksi terputus'}}
 checkNet();setInterval(checkNet,NET_MS);
 
-$('openAdm').onclick=()=>{$('adm').classList.add('on');$('apin').focus()};
+const openAdmin=()=>{$('adm').classList.add('on');$('apin').focus()};
+$('openAdm').onclick=openAdmin;
+if(location.hash==='#admin')openAdmin();
+addEventListener('hashchange',()=>{if(location.hash==='#admin')openAdmin()});
+$('adm').onclick=e=>{if(e.target===$('adm'))$('closeAdm').click()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('adm').classList.contains('on'))$('closeAdm').click()});
 $('closeAdm').onclick=()=>{$('adm').classList.remove('on');stopCam();adminPin='';$('a-panel').classList.add('hid');$('a-login').classList.remove('hid');$('apin').value=''};
 $('alogin').onclick=async()=>{adminPin=$('apin').value;const r=await api('admin_list',{adminPin}).catch(()=>({ok:false,pesan:'Koneksi gagal'}));
  if(!r.ok){alert(r.pesan);adminPin='';return}$('a-login').classList.add('hid');$('a-panel').classList.remove('hid');renderAdmin(r)};
